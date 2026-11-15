@@ -1,0 +1,44 @@
+{
+  "name": "agenda-faculdades",
+  "productName": "Agenda das Faculdades",
+  "version": "1.0.0",
+  "description": "Organizador local de tarefas, trabalhos e provas de duas faculdades, com calendário. Roda offline com SQLite.",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "instalador": "electron-builder --win nsis"
+  },
+  "author": "Pedro",
+  "license": "MIT",
+  "type": "commonjs",
+  "devDependencies": {
+    "electron": "^45.3.2",
+    "electron-builder": "^26.18.0"
+  },
+  "build": {
+    "appId": "br.pedro.agenda-faculdades",
+    "productName": "Agenda das Faculdades",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Agenda das Faculdades",
+      "artifactName": "Instalador Agenda das Faculdades ${version}.exe",
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}

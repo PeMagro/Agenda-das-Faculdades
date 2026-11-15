@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: anexo:">
+  <title>Agenda das Faculdades</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <aside class="lateral">
+    <div class="marca">
+      <span class="marca-icone">📚</span>
+      <span class="marca-nome">Agenda das Faculdades</span>
+    </div>
+    <nav class="menu">
+      <a href="#/calendario" data-rota="calendario">Calendário</a>
+      <a href="#/proximas" data-rota="proximas">Próximas atividades</a>
+      <a href="#/faculdades" data-rota="faculdades">Faculdades e matérias</a>
+      <a href="#/chats" data-rota="chats">Chats com o Claude</a>
+    </nav>
+    <div class="lateral-rodape">
+      <button class="btn btn-primario btn-bloco" id="btn-nova-atividade">+ Nova atividade</button>
+      <button class="btn btn-bloco" id="btn-novo-lembrete">+ Novo lembrete</button>
+      <div class="legenda">
+        <span class="legenda-item"><i class="ponto tipo-tarefa"></i>Tarefa</span>
+        <span class="legenda-item"><i class="ponto tipo-trabalho"></i>Trabalho</span>
+        <span class="legenda-item"><i class="ponto tipo-prova"></i>Prova</span>
+        <span class="legenda-item"><i class="ponto tipo-lembrete"></i>Lembrete</span>
+      </div>
+      <div class="tema-seletor" role="group" aria-label="Tema">
+        <button data-tema="light" title="Tema claro">Claro</button>
+        <button data-tema="dark" title="Tema escuro (Noite)">Noite</button>
+        <button data-tema="system" title="Seguir o Windows">Sistema</button>
+      </div>
+    </div>
+  </aside>
+
+  <main class="conteudo" id="conteudo"></main>
+
+  <div class="modal-fundo oculto" id="modal">
+    <div class="modal-caixa" role="dialog" aria-modal="true" id="modal-caixa"></div>
+  </div>
+
+  <div class="toast oculto" id="toast"></div>
+
+  <script src="guia-chat.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
