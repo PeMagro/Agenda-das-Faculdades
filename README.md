@@ -1,8 +1,6 @@
 # Agenda das Faculdades
 
-Aplicativo de desktop (Windows) para organizar tarefas, trabalhos, provas e lembretes de duas faculdades, com calendário. Funciona **100% offline**, com os dados salvos localmente em SQLite. Tem tema Claro/Noite/Sistema e um chat opcional com o Claude (via Claude Code), com suporte a imagens.
-
-Hierarquia: **Faculdade → Semestre → Matéria → Atividade** (tarefa, trabalho ou prova), mais **lembretes** ligados a uma faculdade e, opcionalmente, a uma matéria.
+Aplicativo de desktop (Windows) para organizar tarefas, trabalhos, provas e lembretes de uma ou mais faculdades, com calendário. Funciona **100% offline**, com os dados salvos localmente em SQLite. Tem tema Claro/Noite/Sistema e um chat opcional com o Claude (via Claude Code), com suporte a imagens.
 
 ## Qual arquivo é o instalador?
 
@@ -57,7 +55,7 @@ O `.gitignore` deixa de fora três coisas. Nenhuma delas é necessária no repos
 | `dist/` | Instalador e app empacotado | Depois do `npm install`, rode `npm run instalador`. O arquivo sai em `dist\Instalador Agenda das Faculdades 1.0.0.exe` (a 1ª vez baixa o Electron e o NSIS, leva alguns minutos) |
 | `*.log` | Arquivos de log | Não precisa recriar; são gerados sozinhos |
 
-O banco de dados (`agenda.db`) e as imagens do chat **nunca** estão no projeto: são criados no `%APPDATA%` na primeira vez que o app abre, já com Unicid (4 semestres) e Univesp (8 semestres) cadastradas.
+O banco de dados (`agenda.db`) e as imagens do chat **nunca** estão no projeto: são criados no `%APPDATA%` (no seu computador) na primeira vez que o app abre, já com Unicid (4 semestres) e Univesp (8 semestres) cadastradas.
 
 ## Tecnologias
 
