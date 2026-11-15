@@ -8,6 +8,9 @@ Aplicativo de desktop (Windows) para organizar tarefas, trabalhos, provas e lemb
 
 Ele **não fica no código do repositório** (a pasta `dist/` é ignorada pelo `.gitignore`, e o GitHub não aceita arquivos acima de 100 MB). Ele está disponível na aba **Releases** do repositório. Baixe, execute e siga o instalador.
 
+<img width="1884" height="986" alt="image" src="https://github.com/user-attachments/assets/450b06b8-b740-46b1-8add-984960653cbf" />
+
+
 > Na primeira execução o Windows pode mostrar "O Windows protegeu seu computador", porque o instalador não tem assinatura digital paga. Clique em **Mais informações → Executar assim mesmo**.
 
 Se preferir gerar o instalador você mesmo, veja [Recriando os arquivos ignorados](#recriando-os-arquivos-ignorados).
