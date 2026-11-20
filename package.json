@@ -1,7 +1,7 @@
 {
   "name": "agenda-faculdades",
   "productName": "Agenda das Faculdades",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Organizador local de tarefas, trabalhos e provas de duas faculdades, com calendário. Roda offline com SQLite.",
   "main": "src/main.js",
   "scripts": {

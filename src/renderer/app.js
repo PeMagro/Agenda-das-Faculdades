@@ -4,6 +4,8 @@ const TIPOS = {
   prova: 'Prova',
 };
 const STATUS_CURSO = { pendente: 'Pendente', cursando: 'Cursando', concluido: 'Concluído' };
+const STATUS_PROJETO = { trabalhando: 'Trabalhando', futuro: 'Futuro', finalizado: 'Finalizado' };
+const STATUS_RICE = { em_progresso: 'Em progresso', concluido: 'Concluído', block: 'Block' };
 const MODELOS = {
   opus: { rotulo: 'Opus', descricao: 'mais capaz, consome mais do limite do plano' },
   sonnet: { rotulo: 'Sonnet', descricao: 'equilibrado' },
@@ -18,8 +20,10 @@ const estado = {
   ano: agora.getFullYear(),
   mes: agora.getMonth(),
   faculdadesOcultas: new Set(),
+  projetosOcultos: new Set(),
   mostrarConcluidas: false,
   semestresAbertos: new Map(),
+  ricesAbertos: new Map(),
   chatEnviando: false,
   chatImagens: [],
 };
@@ -153,6 +157,7 @@ async function renderizar() {
   switch (nome) {
     case 'proximas': return renderProximas();
     case 'faculdades': return renderFaculdades();
+    case 'projetos': return renderProjetos();
     case 'chats': return parametro ? renderChat(parametro) : renderChats();
     default: return renderCalendario();
   }
@@ -166,20 +171,24 @@ async function renderCalendario() {
   const inicio = iso(new Date(ano, mes, 1 - deslocamento));
   const fim = iso(new Date(ano, mes, 1 - deslocamento + 41));
 
-  const [atividades, lembretes, faculdades] = await Promise.all([
+  const [atividades, lembretes, faculdades, tarefasRice, projetos] = await Promise.all([
     chamar('listarAtividades', { inicio, fim }),
     chamar('listarLembretes', { inicio, fim }),
     chamar('listarFaculdades'),
+    chamar('listarTarefasRice', { inicio, fim }),
+    chamar('listarProjetos'),
   ]);
 
   const porDia = new Map();
   const adicionar = (item) => {
-    if (estado.faculdadesOcultas.has(item.faculdade_id)) return;
+    const oculto = item.origem === 'rice' ? estado.projetosOcultos.has(item.projeto_id) : estado.faculdadesOcultas.has(item.faculdade_id);
+    if (oculto) return;
     if (!porDia.has(item.data)) porDia.set(item.data, []);
     porDia.get(item.data).push(item);
   };
   lembretes.forEach(adicionar);
   atividades.forEach(adicionar);
+  tarefasRice.forEach((t) => adicionar({ ...t, origem: 'rice' }));
 
   const hoje = hojeISO();
   let celulas = '';
@@ -187,7 +196,9 @@ async function renderCalendario() {
     const d = new Date(ano, mes, 1 - deslocamento + i);
     const chave = iso(d);
     const classes = ['dia', d.getMonth() !== mes ? 'fora' : '', chave === hoje ? 'hoje' : ''].join(' ');
-    const itens = (porDia.get(chave) ?? []).map((it) => (it.tipo ? chipAtividade(it) : chipLembrete(it))).join('');
+    const itens = (porDia.get(chave) ?? [])
+      .map((it) => (it.origem === 'rice' ? chipTarefaRice(it) : it.tipo ? chipAtividade(it) : chipLembrete(it)))
+      .join('');
     celulas += `
       <div class="${classes}" data-dia="${chave}">
         <div class="dia-topo">
@@ -204,6 +215,9 @@ async function renderCalendario() {
   const filtros = faculdades.map((f) => `
     <button class="filtro ${estado.faculdadesOcultas.has(f.id) ? 'inativo' : ''}" data-filtro="${f.id}" title="Mostrar/ocultar">
       ${pontoFaculdade(f.cor)}${esc(f.nome)}
+    </button>`).join('') + projetos.filter((p) => p.status !== 'finalizado').map((p) => `
+    <button class="filtro ${estado.projetosOcultos.has(p.id) ? 'inativo' : ''}" data-filtro-projeto="${p.id}" title="Projeto: mostrar/ocultar">
+      ${pontoFaculdade(p.cor)}${esc(p.nome)}
     </button>`).join('');
 
   conteudo.innerHTML = `
@@ -240,14 +254,30 @@ function chipLembrete(l) {
     </button>`;
 }
 
+function chipTarefaRice(t) {
+  return `
+    <button class="chip tipo-projeto ${t.status === 'concluida' ? 'concluida' : ''}" data-tarefa-rice="${t.id}"
+            title="Projeto ${esc(t.projeto_nome)} · RICE ${esc(t.rice_nome)}: ${esc(t.titulo)}">
+      ${pontoFaculdade(t.projeto_cor)}
+      <span class="chip-texto">${t.hora ? `<b>${esc(t.hora)}</b> ` : ''}${esc(t.titulo)}</span>
+    </button>`;
+}
+
 // ---------- Próximas ----------
 
 async function renderProximas() {
-  const [atividades, lembretes] = await Promise.all([chamar('listarPendentes'), chamar('listarLembretesPendentes')]);
-  const concluidas = estado.mostrarConcluidas ? await chamar('listarConcluidasRecentes', { limite: 30 }) : [];
+  const [atividades, lembretes, tarefasRice] = await Promise.all([
+    chamar('listarPendentes'), chamar('listarLembretesPendentes'), chamar('listarTarefasRicePendentes'),
+  ]);
+  const concluidas = estado.mostrarConcluidas
+    ? [
+      ...await chamar('listarConcluidasRecentes', { limite: 30 }),
+      ...(await chamar('listarTarefasRiceConcluidasRecentes', { limite: 30 })).map((t) => ({ ...t, origem: 'rice' })),
+    ].sort((a, b) => b.data.localeCompare(a.data))
+    : [];
   const hoje = hojeISO();
 
-  const pendentes = [...atividades, ...lembretes].sort((a, b) => a.data.localeCompare(b.data) || (a.hora ?? '').localeCompare(b.hora ?? ''));
+  const pendentes = [...atividades, ...lembretes, ...tarefasRice.map((t) => ({ ...t, origem: 'rice' }))].sort((a, b) => a.data.localeCompare(b.data) || (a.hora ?? '').localeCompare(b.hora ?? ''));
   const grupos = { atrasadas: [], hoje: [], semana: [], depois: [] };
   for (const item of pendentes) {
     const d = diasEntre(hoje, item.data);
@@ -277,6 +307,7 @@ async function renderProximas() {
 }
 
 function itemLista(item) {
+  if (item.origem === 'rice') return itemListaRice(item);
   const data = dataDeISO(item.data);
   const prazo = textoPrazo(item);
   const lembrete = !item.tipo;
@@ -298,6 +329,119 @@ function itemLista(item) {
       <span class="badge ${lembrete ? 'tipo-lembrete' : `tipo-${item.tipo}`}">${lembrete ? 'Lembrete' : TIPOS[item.tipo]}</span>
       <span class="prazo ${prazo.classe}">${prazo.texto}</span>
     </article>`;
+}
+
+function itemListaRice(t) {
+  const data = dataDeISO(t.data);
+  const prazo = textoPrazo(t);
+  const concluida = t.status === 'concluida';
+  return `
+    <article class="item tipo-projeto ${concluida ? 'concluida' : ''}" data-tarefa-rice="${t.id}">
+      <label class="check" title="${concluida ? 'Reabrir' : 'Marcar como concluída'}">
+        <input type="checkbox" data-concluir-tarefa-rice="${t.id}" ${concluida ? 'checked' : ''}>
+      </label>
+      <div class="item-data"><b>${data.getDate()}</b><span>${MESES_CURTOS[data.getMonth()]}</span></div>
+      <div class="item-corpo">
+        <div class="item-titulo">${esc(t.titulo)}</div>
+        <div class="item-meta">${pontoFaculdade(t.projeto_cor)}<span>${esc(t.projeto_nome)} · RICE ${esc(t.rice_nome)}${t.hora ? ` · ${esc(t.hora)}` : ''}</span></div>
+      </div>
+      <span class="badge tipo-projeto">Projeto</span>
+      <span class="prazo ${prazo.classe}">${prazo.texto}</span>
+    </article>`;
+}
+
+// ---------- Projetos ----------
+
+function opcoesDe(rotulos, atual) {
+  return Object.entries(rotulos)
+    .map(([v, r]) => `<option value="${v}" ${v === atual ? 'selected' : ''}>${r}</option>`)
+    .join('');
+}
+
+async function renderProjetos() {
+  const projetos = await chamar('listarEstruturaProjetos');
+  conteudo.innerHTML = `
+    <header class="topo"><h1>Projetos</h1></header>
+    ${projetos.length ? projetos.map(cardProjeto).join('') : '<div class="vazio">Nenhum projeto ainda. Crie o primeiro abaixo.</div>'}
+    <section class="card">
+      <h2>Novo projeto</h2>
+      <form class="form-inline form-nova-faculdade" data-form="novo-projeto">
+        <label>Nome <input type="text" name="nome" required maxlength="120" placeholder="Ex.: Migração do ERP"></label>
+        <label>Cor <input type="color" name="cor" value="#ea580c"></label>
+        <label>Status <select name="status">${opcoesDe(STATUS_PROJETO, 'trabalhando')}</select></label>
+        <button class="btn btn-primario">Adicionar</button>
+      </form>
+    </section>`;
+}
+
+function cardProjeto(p) {
+  return `
+    <section class="card projeto status-${p.status}" data-projeto="${p.id}">
+      <header class="card-topo">
+        <h2>${pontoFaculdade(p.cor)}${esc(p.nome)}</h2>
+        <div class="acoes">
+          <select class="pequeno" data-status-projeto="${p.id}" title="Status do projeto">${opcoesDe(STATUS_PROJETO, p.status)}</select>
+          <button class="btn btn-pequeno" data-editar-projeto="${p.id}">Editar</button>
+          <button class="btn btn-pequeno btn-perigo" data-excluir-projeto="${p.id}">Excluir</button>
+        </div>
+      </header>
+      <div class="semestres">
+        ${p.rices.map(blocoRice).join('') || '<div class="vazio">Nenhum RICE ainda.</div>'}
+      </div>
+      <form class="form-inline" data-form="novo-rice" data-projeto-id="${p.id}">
+        <input type="text" name="nome" placeholder="Novo RICE" required maxlength="200">
+        <select class="pequeno" name="status" title="Status do RICE">${opcoesDe(STATUS_RICE, 'em_progresso')}</select>
+        <input type="text" name="comentario" placeholder="Comentário (opcional)" maxlength="5000">
+        <button class="btn btn-primario btn-pequeno">Adicionar RICE</button>
+      </form>
+    </section>`;
+}
+
+function blocoRice(r) {
+  const pendentes = r.tarefas.filter((t) => t.status === 'pendente').length;
+  const aberto = estado.ricesAbertos.has(r.id) ? estado.ricesAbertos.get(r.id) : r.status !== 'concluido';
+  const tarefas = r.tarefas.map((t) => {
+    const prazo = textoPrazo(t);
+    const concluida = t.status === 'concluida';
+    return `
+      <li class="materia tarefa-rice ${concluida ? 'status-concluido' : ''}">
+        <label class="check" title="${concluida ? 'Reabrir' : 'Marcar como concluída'}">
+          <input type="checkbox" data-concluir-tarefa-rice="${t.id}" ${concluida ? 'checked' : ''}>
+        </label>
+        <button class="tarefa-rice-titulo" data-tarefa-rice="${t.id}" title="Ver detalhes">
+          <span class="materia-nome">${esc(t.titulo)}</span>
+          <span class="materia-contagem">📅 ${dataDeISO(t.data).toLocaleDateString('pt-BR')}${t.hora ? ` às ${esc(t.hora)}` : ''}</span>
+        </button>
+        <span class="prazo ${prazo.classe}">${prazo.texto}</span>
+        <button class="btn btn-pequeno" data-editar-tarefa-rice="${t.id}">Editar</button>
+        <button class="btn btn-pequeno btn-perigo" data-excluir-tarefa-rice="${t.id}">Excluir</button>
+      </li>`;
+  }).join('');
+
+  return `
+    <details class="semestre rice rice-${r.status}" data-rice="${r.id}" ${aberto ? 'open' : ''}>
+      <summary>
+        <span class="rice-nome">${esc(r.nome)}</span>
+        <span class="badge-status">${STATUS_RICE[r.status]}</span>
+        <span class="semestre-info">${pendentes} pendente(s) · ${r.tarefas.length} tarefa(s)</span>
+      </summary>
+      <div class="semestre-corpo">
+        ${r.comentario ? `<div class="rice-comentario">${esc(r.comentario)}</div>` : ''}
+        <div class="linha-acoes">
+          <label>Status do RICE <select class="pequeno" data-status-rice="${r.id}">${opcoesDe(STATUS_RICE, r.status)}</select></label>
+          <span class="acoes">
+            <button class="btn btn-pequeno" data-editar-rice="${r.id}">Editar RICE</button>
+            <button class="btn btn-leve btn-pequeno btn-perigo" data-excluir-rice="${r.id}">Excluir RICE</button>
+          </span>
+        </div>
+        <ul class="materias">${tarefas}</ul>
+        <form class="form-inline" data-form="nova-tarefa-rice" data-rice-id="${r.id}">
+          <input type="text" name="titulo" placeholder="Nova tarefa" required maxlength="200">
+          <input type="date" name="data" required value="${hojeISO()}" title="Data de entrega" style="flex:0 0 auto">
+          <button class="btn btn-primario btn-pequeno">Adicionar tarefa</button>
+        </form>
+      </div>
+    </details>`;
 }
 
 // ---------- Faculdades ----------
@@ -587,6 +731,9 @@ function abrirEscolhaDia(data) {
       <button class="btn escolha-opcao tipo-lembrete" data-escolha="lembrete" data-data="${data}">
         <b>🔔 Lembrete</b><span>Aviso ligado a uma faculdade, com ou sem matéria</span>
       </button>
+      <button class="btn escolha-opcao tipo-projeto" data-escolha="tarefa-rice" data-data="${data}">
+        <b>💼 Tarefa de projeto</b><span>Entrega de um RICE de um projeto da empresa</span>
+      </button>
     </div>
     <div class="modal-acoes"><span class="espaco"></span><button type="button" class="btn" data-fechar>Cancelar</button></div>`);
 }
@@ -744,6 +891,101 @@ function abrirFormularioMateria(m) {
     </form>`);
 }
 
+function abrirFormularioProjeto(p) {
+  abrirModal(`
+    <h2>Editar projeto</h2>
+    <form data-form="projeto" data-id="${p.id}">
+      <label>Nome <input type="text" name="nome" required maxlength="120" value="${esc(p.nome)}"></label>
+      <div class="linha">
+        <label>Cor <input type="color" name="cor" value="${esc(p.cor)}"></label>
+        <label>Status <select name="status">${opcoesDe(STATUS_PROJETO, p.status)}</select></label>
+      </div>
+      ${rodapeModal()}
+    </form>`);
+}
+
+function abrirFormularioRice(r) {
+  abrirModal(`
+    <h2>Editar RICE</h2>
+    <form data-form="rice" data-id="${r.id}">
+      <label>Nome <input type="text" name="nome" required maxlength="200" value="${esc(r.nome)}"></label>
+      <label>Status <select name="status">${opcoesDe(STATUS_RICE, r.status)}</select></label>
+      <label>Comentário <textarea name="comentario" rows="5" maxlength="5000" placeholder="Andamento, motivo do bloqueio, próximos passos…">${esc(r.comentario ?? '')}</textarea></label>
+      ${rodapeModal()}
+    </form>`);
+}
+
+async function abrirFormularioTarefaRice({ data, riceId, tarefa } = {}) {
+  const rices = await chamar('listarRicesParaSelecao');
+  if (!rices.length) {
+    mostrarToast('Crie um projeto com pelo menos um RICE antes de adicionar tarefas.', 'aviso');
+    fecharModal();
+    location.hash = '#/projetos';
+    return;
+  }
+  const t = tarefa ?? { titulo: '', descricao: '', data: data ?? hojeISO(), hora: '', rice_id: riceId ?? null };
+
+  const grupos = new Map();
+  for (const r of rices) {
+    if (!grupos.has(r.projeto_nome)) grupos.set(r.projeto_nome, []);
+    grupos.get(r.projeto_nome).push(r);
+  }
+  const opcoes = [...grupos.entries()].map(([projeto, lista]) => `
+    <optgroup label="${esc(projeto)}">
+      ${lista.map((r) => `<option value="${r.id}" ${r.id === Number(t.rice_id) ? 'selected' : ''}>${esc(r.nome)} (${STATUS_RICE[r.status]})</option>`).join('')}
+    </optgroup>`).join('');
+
+  abrirModal(`
+    <h2>${t.id ? 'Editar tarefa do projeto' : 'Nova tarefa de projeto'}</h2>
+    <form data-form="tarefa-rice" data-id="${t.id ?? ''}">
+      <label>Título <input type="text" name="titulo" required maxlength="200" value="${esc(t.titulo)}" placeholder="Ex.: Validar layout com o cliente"></label>
+      <label>RICE
+        <select name="riceId" required>
+          <option value="">Selecione…</option>
+          ${opcoes}
+        </select>
+      </label>
+      <div class="linha">
+        <label>Data de entrega <input type="date" name="data" required value="${esc(t.data)}"></label>
+        <label>Hora (opcional) <input type="time" name="hora" value="${esc(t.hora ?? '')}"></label>
+      </div>
+      <label>Descrição <textarea name="descricao" rows="4" maxlength="5000" placeholder="Detalhes, links, responsáveis…">${esc(t.descricao ?? '')}</textarea></label>
+      ${rodapeModal()}
+    </form>`);
+}
+
+async function abrirDetalheTarefaRice(id) {
+  const t = await chamar('obterTarefaRice', id);
+  const prazo = textoPrazo(t);
+  const novoStatus = t.status === 'pendente' ? 'concluida' : 'pendente';
+  abrirModal(`
+    <div class="detalhe tipo-projeto ${t.status === 'concluida' ? 'concluida' : ''}">
+      <div><span class="badge tipo-projeto">Projeto</span></div>
+      <h2>${esc(t.titulo)}</h2>
+      <p class="detalhe-materia">
+        ${pontoFaculdade(t.projeto_cor)}
+        <span>${esc(t.projeto_nome)} · RICE <b>${esc(t.rice_nome)}</b> (${STATUS_RICE[t.rice_status]})</span>
+      </p>
+      <p class="detalhe-data">📅 <span>${formatarDataLonga(t.data)}${t.hora ? ` às ${esc(t.hora)}` : ''}</span> · <span class="prazo ${prazo.classe}">${prazo.texto}</span></p>
+      ${t.descricao ? `<div class="detalhe-descricao">${esc(t.descricao)}</div>` : ''}
+      <div class="modal-acoes">
+        <button class="btn btn-perigo" data-tarefa-rice-excluir="${t.id}">Excluir</button>
+        <span class="espaco"></span>
+        <button class="btn" data-tarefa-rice-editar="${t.id}">Editar</button>
+        <button class="btn btn-primario" data-tarefa-rice-status="${t.id}" data-novo-status="${novoStatus}">
+          ${t.status === 'pendente' ? 'Marcar como concluída' : 'Reabrir'}
+        </button>
+      </div>
+    </div>`);
+}
+
+async function excluirTarefaRice(id) {
+  if (!confirm('Excluir esta tarefa do projeto?')) return false;
+  await chamar('excluirTarefaRice', id);
+  mostrarToast('Tarefa excluída.', 'ok');
+  return true;
+}
+
 function abrirFormularioAgente(agente) {
   const a = agente ?? { tema: '', descricao: '', modelo: 'opus' };
   abrirModal(`
@@ -769,6 +1011,9 @@ conteudo.addEventListener('click', async (e) => {
   const alvo = e.target;
   if (alvo.closest('a[href^="#"]')) return;
 
+  const chipRice = alvo.closest('[data-tarefa-rice]');
+  if (chipRice && !alvo.closest('.check')) return abrirDetalheTarefaRice(Number(chipRice.dataset.tarefaRice));
+
   const chip = alvo.closest('[data-atividade]');
   if (chip && !alvo.closest('.check')) return abrirDetalhe(Number(chip.dataset.atividade));
 
@@ -785,6 +1030,13 @@ conteudo.addEventListener('click', async (e) => {
     const id = Number(filtro.dataset.filtro);
     if (estado.faculdadesOcultas.has(id)) estado.faculdadesOcultas.delete(id);
     else estado.faculdadesOcultas.add(id);
+    return renderCalendario();
+  }
+  const filtroProjeto = alvo.closest('[data-filtro-projeto]');
+  if (filtroProjeto) {
+    const id = Number(filtroProjeto.dataset.filtroProjeto);
+    if (estado.projetosOcultos.has(id)) estado.projetosOcultos.delete(id);
+    else estado.projetosOcultos.add(id);
     return renderCalendario();
   }
 
@@ -881,6 +1133,31 @@ conteudo.addEventListener('click', async (e) => {
     mostrarToast('Matéria excluída.', 'ok');
     return renderFaculdades();
   }
+
+  const editarProjeto = alvo.closest('[data-editar-projeto]');
+  if (editarProjeto) return abrirFormularioProjeto(await chamar('obterProjeto', Number(editarProjeto.dataset.editarProjeto)));
+  const excluirProjeto = alvo.closest('[data-excluir-projeto]');
+  if (excluirProjeto) {
+    if (!confirm('Excluir este projeto? Todos os RICEs e tarefas dele serão apagados.')) return;
+    await chamar('excluirProjeto', Number(excluirProjeto.dataset.excluirProjeto));
+    mostrarToast('Projeto excluído.', 'ok');
+    return renderProjetos();
+  }
+  const editarRice = alvo.closest('[data-editar-rice]');
+  if (editarRice) return abrirFormularioRice(await chamar('obterRice', Number(editarRice.dataset.editarRice)));
+  const excluirRice = alvo.closest('[data-excluir-rice]');
+  if (excluirRice) {
+    if (!confirm('Excluir este RICE? As tarefas dele serão apagadas.')) return;
+    await chamar('excluirRice', Number(excluirRice.dataset.excluirRice));
+    mostrarToast('RICE excluído.', 'ok');
+    return renderProjetos();
+  }
+  const editarTarefaRice = alvo.closest('[data-editar-tarefa-rice]');
+  if (editarTarefaRice) return abrirFormularioTarefaRice({ tarefa: await chamar('obterTarefaRice', Number(editarTarefaRice.dataset.editarTarefaRice)) });
+  const excluirTarefa = alvo.closest('[data-excluir-tarefa-rice]');
+  if (excluirTarefa) {
+    if (await excluirTarefaRice(Number(excluirTarefa.dataset.excluirTarefaRice))) return renderProjetos();
+  }
 });
 
 conteudo.addEventListener('change', async (e) => {
@@ -900,6 +1177,18 @@ conteudo.addEventListener('change', async (e) => {
   if (alvo.dataset.statusMateria) {
     await chamar('definirStatusMateria', { id: Number(alvo.dataset.statusMateria), status: alvo.value });
     return renderFaculdades();
+  }
+  if (alvo.dataset.concluirTarefaRice) {
+    await chamar('definirStatusTarefaRice', { id: Number(alvo.dataset.concluirTarefaRice), status: alvo.checked ? 'concluida' : 'pendente' });
+    return renderizar();
+  }
+  if (alvo.dataset.statusProjeto) {
+    await chamar('definirStatusProjeto', { id: Number(alvo.dataset.statusProjeto), status: alvo.value });
+    return renderProjetos();
+  }
+  if (alvo.dataset.statusRice) {
+    await chamar('definirStatusRice', { id: Number(alvo.dataset.statusRice), status: alvo.value });
+    return renderProjetos();
   }
 });
 
@@ -921,6 +1210,23 @@ conteudo.addEventListener('submit', async (e) => {
     return renderFaculdades();
   }
   if (form.dataset.form === 'chat') return enviarMensagemChat(form);
+  if (form.dataset.form === 'novo-projeto') {
+    await chamar('criarProjeto', dados);
+    mostrarToast('Projeto adicionado.', 'ok');
+    return renderProjetos();
+  }
+  if (form.dataset.form === 'novo-rice') {
+    const novoId = await chamar('criarRice', { projetoId: Number(form.dataset.projetoId), ...dados });
+    estado.ricesAbertos.set(novoId, true);
+    mostrarToast('RICE adicionado.', 'ok');
+    return renderProjetos();
+  }
+  if (form.dataset.form === 'nova-tarefa-rice') {
+    await chamar('criarTarefaRice', { riceId: Number(form.dataset.riceId), ...dados });
+    estado.ricesAbertos.set(Number(form.dataset.riceId), true);
+    mostrarToast('Tarefa adicionada ao calendário.', 'ok');
+    return renderProjetos();
+  }
 });
 
 conteudo.addEventListener('keydown', (e) => {
@@ -975,6 +1281,8 @@ conteudo.addEventListener('input', (e) => {
 conteudo.addEventListener('toggle', (e) => {
   const det = e.target.closest?.('[data-semestre]');
   if (det) estado.semestresAbertos.set(Number(det.dataset.semestre), det.open);
+  const rice = e.target.closest?.('[data-rice]');
+  if (rice) estado.ricesAbertos.set(Number(rice.dataset.rice), rice.open);
 }, true);
 
 // ---------- Eventos: modal ----------
@@ -999,7 +1307,24 @@ modalCaixa.addEventListener('click', async (e) => {
   const escolha = alvo.closest('[data-escolha]');
   if (escolha) {
     const { data } = escolha.dataset;
-    return escolha.dataset.escolha === 'lembrete' ? abrirFormularioLembrete({ data }) : abrirFormularioAtividade({ data });
+    if (escolha.dataset.escolha === 'lembrete') return abrirFormularioLembrete({ data });
+    if (escolha.dataset.escolha === 'tarefa-rice') return abrirFormularioTarefaRice({ data });
+    return abrirFormularioAtividade({ data });
+  }
+
+  const editarTarefaRice = alvo.closest('[data-tarefa-rice-editar]');
+  if (editarTarefaRice) return abrirFormularioTarefaRice({ tarefa: await chamar('obterTarefaRice', Number(editarTarefaRice.dataset.tarefaRiceEditar)) });
+  const excluirTarefa = alvo.closest('[data-tarefa-rice-excluir]');
+  if (excluirTarefa) {
+    if (!await excluirTarefaRice(Number(excluirTarefa.dataset.tarefaRiceExcluir))) return;
+    fecharModal();
+    return renderizar();
+  }
+  const statusTarefaRice = alvo.closest('[data-tarefa-rice-status]');
+  if (statusTarefaRice) {
+    await chamar('definirStatusTarefaRice', { id: Number(statusTarefaRice.dataset.tarefaRiceStatus), status: statusTarefaRice.dataset.novoStatus });
+    fecharModal();
+    return renderizar();
   }
 
   const editar = alvo.closest('[data-detalhe-editar]');
@@ -1063,6 +1388,20 @@ modalCaixa.addEventListener('submit', async (e) => {
     case 'faculdade':
       await chamar('atualizarFaculdade', { id, ...dados });
       break;
+    case 'projeto':
+      await chamar('atualizarProjeto', { id, ...dados });
+      break;
+    case 'rice':
+      await chamar('atualizarRice', { id, ...dados });
+      break;
+    case 'tarefa-rice': {
+      await chamar(id ? 'atualizarTarefaRice' : 'criarTarefaRice', { id, ...dados });
+      const data = dataDeISO(dados.data);
+      estado.ano = data.getFullYear();
+      estado.mes = data.getMonth();
+      mostrarToast('Tarefa salva.', 'ok');
+      break;
+    }
     case 'materia':
       await chamar('atualizarMateria', { id, ...dados });
       break;

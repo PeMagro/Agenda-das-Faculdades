@@ -74,6 +74,42 @@ CREATE TABLE IF NOT EXISTS mensagem (
 );
 
 CREATE INDEX IF NOT EXISTS idx_mensagem_agente ON mensagem(agente_id);
+
+CREATE TABLE IF NOT EXISTS projeto (
+  id         INTEGER PRIMARY KEY,
+  nome       TEXT NOT NULL,
+  cor        TEXT NOT NULL DEFAULT '#ea580c',
+  status     TEXT NOT NULL DEFAULT 'trabalhando'
+             CHECK (status IN ('trabalhando', 'futuro', 'finalizado')),
+  criado_em  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+CREATE TABLE IF NOT EXISTS rice (
+  id          INTEGER PRIMARY KEY,
+  projeto_id  INTEGER NOT NULL REFERENCES projeto(id) ON DELETE CASCADE,
+  nome        TEXT NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'em_progresso'
+              CHECK (status IN ('em_progresso', 'concluido', 'block')),
+  comentario  TEXT,
+  criado_em   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_rice_projeto ON rice(projeto_id);
+
+CREATE TABLE IF NOT EXISTS tarefa_rice (
+  id          INTEGER PRIMARY KEY,
+  rice_id     INTEGER NOT NULL REFERENCES rice(id) ON DELETE CASCADE,
+  titulo      TEXT NOT NULL,
+  descricao   TEXT,
+  data        TEXT NOT NULL,
+  hora        TEXT,
+  status      TEXT NOT NULL DEFAULT 'pendente'
+              CHECK (status IN ('pendente', 'concluida')),
+  criada_em   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_tarefa_rice_data ON tarefa_rice(data);
+CREATE INDEX IF NOT EXISTS idx_tarefa_rice_rice ON tarefa_rice(rice_id);
 `;
 
 const TIPOS = new Set(['tarefa', 'trabalho', 'prova']);
@@ -81,6 +117,8 @@ const STATUS_CURSO = new Set(['pendente', 'cursando', 'concluido']);
 const STATUS_ATIVIDADE = new Set(['pendente', 'concluida']);
 const MODELOS = new Set(['opus', 'sonnet', 'haiku']);
 const PAPEIS = new Set(['user', 'assistant']);
+const STATUS_PROJETO = new Set(['trabalhando', 'futuro', 'finalizado']);
+const STATUS_RICE = new Set(['em_progresso', 'concluido', 'block']);
 const RE_DATA = /^\d{4}-\d{2}-\d{2}$/;
 const RE_HORA = /^\d{2}:\d{2}$/;
 const RE_COR = /^#[0-9a-fA-F]{6}$/;
@@ -416,6 +454,196 @@ class Banco {
 
   excluirLembrete(id) {
     this.db.prepare('DELETE FROM lembrete WHERE id = ?').run(inteiro(id, 'Lembrete'));
+  }
+
+  // ---------- Projetos ----------
+
+  listarEstruturaProjetos() {
+    const projetos = this.db.prepare(`
+      SELECT * FROM projeto
+      ORDER BY CASE status WHEN 'trabalhando' THEN 0 WHEN 'futuro' THEN 1 ELSE 2 END, nome COLLATE NOCASE
+    `).all();
+    const rices = this.db.prepare('SELECT * FROM rice ORDER BY id').all();
+    const tarefas = this.db.prepare('SELECT * FROM tarefa_rice ORDER BY data, hora IS NULL, hora, titulo').all();
+
+    const tarefasPorRice = new Map();
+    for (const t of tarefas) {
+      if (!tarefasPorRice.has(t.rice_id)) tarefasPorRice.set(t.rice_id, []);
+      tarefasPorRice.get(t.rice_id).push(t);
+    }
+    const ricesPorProjeto = new Map();
+    for (const r of rices) {
+      r.tarefas = tarefasPorRice.get(r.id) ?? [];
+      if (!ricesPorProjeto.has(r.projeto_id)) ricesPorProjeto.set(r.projeto_id, []);
+      ricesPorProjeto.get(r.projeto_id).push(r);
+    }
+    for (const p of projetos) p.rices = ricesPorProjeto.get(p.id) ?? [];
+    return projetos;
+  }
+
+  listarProjetos() {
+    return this.db.prepare('SELECT * FROM projeto ORDER BY nome COLLATE NOCASE').all();
+  }
+
+  obterProjeto(id) {
+    const linha = this.db.prepare('SELECT * FROM projeto WHERE id = ?').get(inteiro(id, 'Projeto'));
+    if (!linha) throw new Error('Projeto não encontrado.');
+    return linha;
+  }
+
+  _validarProjeto({ nome, cor, status }) {
+    return {
+      nome: texto(nome, 'Nome do projeto', { max: 120 }),
+      cor: RE_COR.test(cor ?? '') ? cor : '#ea580c',
+      status: emConjunto(status ?? 'trabalhando', STATUS_PROJETO, 'Status'),
+    };
+  }
+
+  criarProjeto(dados) {
+    const v = this._validarProjeto(dados);
+    const { lastInsertRowid } = this.db
+      .prepare('INSERT INTO projeto (nome, cor, status) VALUES (?, ?, ?)')
+      .run(v.nome, v.cor, v.status);
+    return Number(lastInsertRowid);
+  }
+
+  atualizarProjeto(dados) {
+    const v = this._validarProjeto(dados);
+    this.db.prepare('UPDATE projeto SET nome = ?, cor = ?, status = ? WHERE id = ?')
+      .run(v.nome, v.cor, v.status, inteiro(dados.id, 'Projeto'));
+  }
+
+  definirStatusProjeto({ id, status }) {
+    this.db.prepare('UPDATE projeto SET status = ? WHERE id = ?')
+      .run(emConjunto(status, STATUS_PROJETO, 'Status'), inteiro(id, 'Projeto'));
+  }
+
+  excluirProjeto(id) {
+    this.db.prepare('DELETE FROM projeto WHERE id = ?').run(inteiro(id, 'Projeto'));
+  }
+
+  // ---------- RICEs ----------
+
+  listarRicesParaSelecao() {
+    return this.db.prepare(`
+      SELECT r.id, r.nome, r.status,
+             p.id AS projeto_id, p.nome AS projeto_nome, p.cor AS projeto_cor, p.status AS projeto_status
+      FROM rice r
+      JOIN projeto p ON p.id = r.projeto_id
+      ORDER BY p.nome COLLATE NOCASE, r.id
+    `).all();
+  }
+
+  obterRice(id) {
+    const linha = this.db.prepare('SELECT * FROM rice WHERE id = ?').get(inteiro(id, 'RICE'));
+    if (!linha) throw new Error('RICE não encontrado.');
+    return linha;
+  }
+
+  _validarRice({ nome, status, comentario }) {
+    return {
+      nome: texto(nome, 'Nome do RICE', { max: 200 }),
+      status: emConjunto(status ?? 'em_progresso', STATUS_RICE, 'Status'),
+      comentario: texto(comentario, 'Comentário', { obrigatorio: false, max: 5000 }),
+    };
+  }
+
+  criarRice({ projetoId, ...dados }) {
+    const v = this._validarRice(dados);
+    const { lastInsertRowid } = this.db
+      .prepare('INSERT INTO rice (projeto_id, nome, status, comentario) VALUES (?, ?, ?, ?)')
+      .run(inteiro(projetoId, 'Projeto'), v.nome, v.status, v.comentario);
+    return Number(lastInsertRowid);
+  }
+
+  atualizarRice({ id, ...dados }) {
+    const v = this._validarRice(dados);
+    this.db.prepare('UPDATE rice SET nome = ?, status = ?, comentario = ? WHERE id = ?')
+      .run(v.nome, v.status, v.comentario, inteiro(id, 'RICE'));
+  }
+
+  definirStatusRice({ id, status }) {
+    this.db.prepare('UPDATE rice SET status = ? WHERE id = ?')
+      .run(emConjunto(status, STATUS_RICE, 'Status'), inteiro(id, 'RICE'));
+  }
+
+  excluirRice(id) {
+    this.db.prepare('DELETE FROM rice WHERE id = ?').run(inteiro(id, 'RICE'));
+  }
+
+  // ---------- Tarefas de RICE ----------
+
+  _selectTarefaRice() {
+    return `
+      SELECT t.*,
+             r.nome AS rice_nome, r.status AS rice_status,
+             p.id AS projeto_id, p.nome AS projeto_nome, p.cor AS projeto_cor
+      FROM tarefa_rice t
+      JOIN rice r ON r.id = t.rice_id
+      JOIN projeto p ON p.id = r.projeto_id
+    `;
+  }
+
+  listarTarefasRice({ inicio, fim }) {
+    if (!RE_DATA.test(inicio) || !RE_DATA.test(fim)) throw new Error('Período inválido.');
+    return this.db
+      .prepare(`${this._selectTarefaRice()} WHERE t.data BETWEEN ? AND ? ORDER BY t.data, t.hora IS NULL, t.hora, t.titulo`)
+      .all(inicio, fim);
+  }
+
+  listarTarefasRicePendentes() {
+    return this.db
+      .prepare(`${this._selectTarefaRice()} WHERE t.status = 'pendente' ORDER BY t.data, t.hora IS NULL, t.hora, t.titulo`)
+      .all();
+  }
+
+  listarTarefasRiceConcluidasRecentes({ limite = 30 } = {}) {
+    return this.db
+      .prepare(`${this._selectTarefaRice()} WHERE t.status = 'concluida' ORDER BY t.data DESC, t.titulo LIMIT ?`)
+      .all(Math.min(Math.max(Number(limite) || 30, 1), 200));
+  }
+
+  obterTarefaRice(id) {
+    const linha = this.db.prepare(`${this._selectTarefaRice()} WHERE t.id = ?`).get(inteiro(id, 'Tarefa'));
+    if (!linha) throw new Error('Tarefa não encontrada.');
+    return linha;
+  }
+
+  _validarTarefaRice({ riceId, titulo, descricao, data, hora }) {
+    if (!RE_DATA.test(data ?? '')) throw new Error('Data de entrega inválida.');
+    const horaLimpa = hora ? hora.trim() : '';
+    if (horaLimpa && !RE_HORA.test(horaLimpa)) throw new Error('Hora inválida.');
+    return {
+      riceId: inteiro(riceId, 'RICE'),
+      titulo: texto(titulo, 'Título', { max: 200 }),
+      descricao: texto(descricao, 'Descrição', { obrigatorio: false, max: 5000 }),
+      data,
+      hora: horaLimpa || null,
+    };
+  }
+
+  criarTarefaRice(dados) {
+    const v = this._validarTarefaRice(dados);
+    const { lastInsertRowid } = this.db
+      .prepare('INSERT INTO tarefa_rice (rice_id, titulo, descricao, data, hora) VALUES (?, ?, ?, ?, ?)')
+      .run(v.riceId, v.titulo, v.descricao, v.data, v.hora);
+    return Number(lastInsertRowid);
+  }
+
+  atualizarTarefaRice(dados) {
+    const v = this._validarTarefaRice(dados);
+    this.db
+      .prepare('UPDATE tarefa_rice SET rice_id = ?, titulo = ?, descricao = ?, data = ?, hora = ? WHERE id = ?')
+      .run(v.riceId, v.titulo, v.descricao, v.data, v.hora, inteiro(dados.id, 'Tarefa'));
+  }
+
+  definirStatusTarefaRice({ id, status }) {
+    this.db.prepare('UPDATE tarefa_rice SET status = ? WHERE id = ?')
+      .run(emConjunto(status, STATUS_ATIVIDADE, 'Status'), inteiro(id, 'Tarefa'));
+  }
+
+  excluirTarefaRice(id) {
+    this.db.prepare('DELETE FROM tarefa_rice WHERE id = ?').run(inteiro(id, 'Tarefa'));
   }
 
   // ---------- Agentes de chat ----------

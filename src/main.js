@@ -9,7 +9,8 @@ const { Banco } = require('./db');
 let banco;
 let janela;
 
-app.setPath('userData', path.join(app.getPath('appData'), 'agenda-faculdades'));
+// AGENDA_DADOS permite rodar uma cópia isolada (testes) sem tocar no banco real.
+app.setPath('userData', process.env.AGENDA_DADOS || path.join(app.getPath('appData'), 'agenda-faculdades'));
 app.setAppUserModelId('br.pedro.agenda-faculdades');
 const CAMINHO_BANCO = path.join(app.getPath('userData'), 'agenda.db');
 // Pasta vazia usada como diretório de trabalho do Claude Code, pra ele não enxergar projetos do usuário.

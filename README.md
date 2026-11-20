@@ -2,9 +2,13 @@
 
 Aplicativo de desktop (Windows) para organizar tarefas, trabalhos, provas e lembretes de uma ou mais faculdades, com calendário. Funciona **100% offline**, com os dados salvos localmente em SQLite. Tem tema Claro/Noite/Sistema e um chat opcional com o Claude (via Claude Code), com suporte a imagens.
 
+Tela **Projetos** (para o trabalho): **Projeto** (status trabalhando, futuro ou finalizado, com cor própria) → **RICEs** (status em progresso, concluído ou block, com comentário) → **tarefas** com data de entrega, que aparecem no calendário.
+
+> A versão só com as faculdades (sem Projetos) está na branch [`only-facul-version`](../../tree/only-facul-version), com o instalador 1.0.0 na release v1.0.0.
+
 ## Qual arquivo é o instalador?
 
-**`Instalador Agenda das Faculdades 1.0.0.exe`** (cerca de 121 MB).
+**`Instalador Agenda das Faculdades 1.1.0.exe`** (cerca de 121 MB).
 
 Ele **não fica no código do repositório** (a pasta `dist/` é ignorada pelo `.gitignore`, e o GitHub não aceita arquivos acima de 100 MB). Ele está disponível na aba **Releases** do repositório. Baixe, execute e siga o instalador.
 
@@ -55,7 +59,7 @@ O `.gitignore` deixa de fora três coisas. Nenhuma delas é necessária no repos
 | Ignorado | O que é | Como recriar |
 | --- | --- | --- |
 | `node_modules/` | Dependências (Electron e electron-builder) | Na pasta do projeto, rode `npm install` |
-| `dist/` | Instalador e app empacotado | Depois do `npm install`, rode `npm run instalador`. O arquivo sai em `dist\Instalador Agenda das Faculdades 1.0.0.exe` (a 1ª vez baixa o Electron e o NSIS, leva alguns minutos) |
+| `dist/` | Instalador e app empacotado | Depois do `npm install`, rode `npm run instalador`. O arquivo sai em `dist\Instalador Agenda das Faculdades 1.1.0.exe` (a 1ª vez baixa o Electron e o NSIS, leva alguns minutos) |
 | `*.log` | Arquivos de log | Não precisa recriar; são gerados sozinhos |
 
 O banco de dados (`agenda.db`) e as imagens do chat **nunca** estão no projeto: são criados no `%APPDATA%` (no seu computador) na primeira vez que o app abre, já com Unicid (4 semestres) e Univesp (8 semestres) cadastradas.

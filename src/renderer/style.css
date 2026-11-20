@@ -81,8 +81,9 @@
 .tipo-trabalho { --tipo: #7c3aed; }
 .tipo-prova    { --tipo: #dc2626; }
 .tipo-lembrete { --tipo: #0d9488; }
+.tipo-projeto  { --tipo: #ea580c; }
 :root[data-theme="dark"] .tipo-tarefa, :root[data-theme="dark"] .tipo-trabalho,
-:root[data-theme="dark"] .tipo-prova, :root[data-theme="dark"] .tipo-lembrete { --tipo-texto: color-mix(in srgb, var(--tipo) 70%, var(--superficie)); }
+:root[data-theme="dark"] .tipo-prova, :root[data-theme="dark"] .tipo-lembrete, :root[data-theme="dark"] .tipo-projeto { --tipo-texto: color-mix(in srgb, var(--tipo) 70%, var(--superficie)); }
 .badge, .chip-texto b, .tipo-opcao:has(input:checked) { color: var(--tipo-texto, var(--tipo)); }
 
 * { box-sizing: border-box; }
@@ -267,7 +268,7 @@ h3 { font-size: 15px; }
 .dia:hover .dia-add { opacity: 1; }
 .dia-add[data-novo-lembrete] { font-size: 12px; }
 
-.escolha { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.escolha { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .escolha-opcao {
   flex-direction: column;
   align-items: flex-start;
@@ -453,6 +454,21 @@ h3 { font-size: 15px; }
 .materia-nome { font-weight: 600; }
 .materia-prof { color: var(--texto-2); font-size: 13px; }
 .materia-contagem { color: var(--texto-3); font-size: 12px; }
+
+.projeto.status-finalizado { opacity: .7; }
+.projeto.status-futuro { border-style: dashed; }
+.rice summary .rice-nome { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rice.rice-em_progresso { border-color: color-mix(in srgb, var(--acento) 45%, var(--superficie)); background: color-mix(in srgb, var(--acento) 4%, var(--superficie)); }
+.rice.rice-concluido { opacity: .75; }
+.rice.rice-block { border-color: color-mix(in srgb, var(--perigo) 50%, var(--superficie)); background: color-mix(in srgb, var(--perigo) 5%, var(--superficie)); }
+.rice-em_progresso > summary .badge-status { background: color-mix(in srgb, var(--acento) 14%, var(--superficie)); color: var(--acento-escuro); }
+.rice-concluido > summary .badge-status { background: color-mix(in srgb, var(--ok) 14%, var(--superficie)); color: var(--ok); }
+.rice-block > summary .badge-status { background: color-mix(in srgb, var(--perigo) 14%, var(--superficie)); color: var(--perigo); }
+.rice-comentario { background: var(--superficie); border: 1px dashed var(--borda); border-radius: 8px; padding: 8px 12px; font-size: 13px; color: var(--texto-2); white-space: pre-wrap; }
+.materia.tarefa-rice { grid-template-columns: auto 1fr auto auto auto; }
+.materia.tarefa-rice.status-concluido .materia-nome { text-decoration: line-through; }
+.tarefa-rice-titulo { all: unset; cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; }
+.tarefa-rice-titulo:hover .materia-nome { color: var(--acento); }
 
 .form-inline { display: flex; flex-wrap: wrap; gap: 8px; }
 .form-inline input { flex: 1 1 160px; }
